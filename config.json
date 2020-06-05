@@ -1,0 +1,9 @@
+{
+	"ipfs": "D:\\Users\\Asus\\go-ipfs\\ipfs.exe",
+	"user": "cfg",
+	"name": "LostAbaddon",
+	"port": 8001,
+	"connectionLimit": 100,
+	"entrances": [],
+	"storage": "rooms"
+}
