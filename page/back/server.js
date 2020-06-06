@@ -1,10 +1,17 @@
+const Responsors = {};
 const sendToApp = (event, data, err) => {
 	chrome.runtime.sendMessage(chrome.runtime.id, {event, data, err});
 };
 
-chrome.runtime.onMessage.addListener((data, app, cb) => {
+Responsors.Init = data => {
 	console.log(data);
 	sendToApp('Reply', 'HolyHell!!!');
+};
+
+chrome.runtime.onMessage.addListener((data, app, cb) => {
+	var cb = Responsors[data.event];
+	if (!cb) return;
+	cb(data.data);
 });
 
 chrome.app.runtime.onLaunched.addListener(function() {
