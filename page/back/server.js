@@ -1,3 +1,12 @@
+const sendToApp = (event, data, err) => {
+	chrome.runtime.sendMessage(chrome.runtime.id, {event, data, err});
+};
+
+chrome.runtime.onMessage.addListener((data, app, cb) => {
+	console.log(data);
+	sendToApp('Reply', 'HolyHell!!!');
+});
+
 chrome.app.runtime.onLaunched.addListener(function() {
 	chrome.app.window.create('index.html', {
 		id: "GamePort",
@@ -8,8 +17,4 @@ chrome.app.runtime.onLaunched.addListener(function() {
 			minHeight: 380
 		}
 	});
-});
-
-chrome.runtime.onMessage.addListener((...args) => {
-	console.log('>>>>>>>>>>', args);
 });

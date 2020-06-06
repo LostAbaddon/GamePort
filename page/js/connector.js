@@ -9,6 +9,8 @@ GamePort.onInit = cb => {
 	initCBs.push(cb);
 };
 
+// 与后台通讯的方法的初始化
+
 const onSocketLoaded = () => {
 	var responsers = new Map();
 
@@ -103,5 +105,9 @@ else {
 }
 
 GamePort.onInit(() => {
+	GamePort.register('Reply', (...args) => {
+		console.log('::::', args);
+	});
+
 	GamePort.send('Init', 'Aloha Kosmos!');
 });
