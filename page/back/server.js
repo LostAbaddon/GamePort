@@ -18,10 +18,10 @@ chrome.app.runtime.onLaunched.addListener(function() {
 	chrome.app.window.create('index.html', {
 		id: "GamePort",
 		innerBounds: {
-			width: 244,
-			height: 380,
-			minWidth: 244,
-			minHeight: 380
+			width: 660,
+			height: 440,
+			minWidth: 660,
+			minHeight: 220
 		}
 	});
 });

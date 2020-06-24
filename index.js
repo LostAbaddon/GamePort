@@ -1,7 +1,5 @@
 const DefaultPort = 80;
-
-const Path = require('path');
-const FS = require('fs');
+const DefaultSecurePort = 443;
 
 require("./core");
 loadall("./core/commandline");
@@ -22,9 +20,10 @@ const clp = CLP({
 	title: CSP_Name + " v" + CSP_Version,
 })
 .describe(setStyle(CSP_Name + " v" + CSP_Version, "bold"))
-.addOption('--port -p [port=' + DefaultPort + '] >> 指定端口')
+.addOption('--port -p [port=' + DefaultPort + '] >> 指定HTTP端口')
+.addOption('--secure -s [port=' + DefaultSecurePort + '] >> 指定HTTPS端口')
 .on('command', async (param, command) => {
-	webServer(param.port || DefaultPort, () => {
+	webServer(param.port || DefaultPort, param.secure || DefaultSecurePort, () => {
 		console.log(setStyle('游戏中心启动！', 'bold'));
 	});
 })

@@ -10,7 +10,6 @@ GamePort.onInit = cb => {
 };
 
 // 与后台通讯的方法的初始化
-
 const onSocketLoaded = () => {
 	var responsers = new Map();
 
@@ -78,13 +77,26 @@ const onExtensionLoaded = () => {
 		return this;
 	};
 
-	setTimeout(() => {
-		GamePort.initialized = true;
-		initCBs.forEach(cb => cb());
-	}, 0);
+	GamePort.initialized = true;
+	initCBs.forEach(cb => cb());
+};
+const onLocalLoaded = () => {
+	GamePort.send = function (event, data) {
+		return this;
+	};
+	GamePort.register = function (event, callback) {
+		return this;
+	};
+	GamePort.unregister = function (event, callback) {
+		return this;
+	};
+
+	GamePort.initialized = true;
+	initCBs.forEach(cb => cb());
 };
 
 var isChromeApp = false;
+var isLocalApp = location.protocol === 'file:';
 try {
 	if (!!chrome && !!chrome.runtime && !!chrome.runtime.id) {
 		isChromeApp = true;
@@ -93,16 +105,16 @@ try {
 catch {}
 
 // 如果不是 Chrome App / Extension，则加载 socket.io
-if (!isChromeApp) {
-	let loader = document.createElement('script');
+window.addEventListener('load', () => {
+	if (isLocalApp) return onLocalLoaded();
+	if (isChromeApp) return onExtensionLoaded();
+
+	var loader = document.createElement('script');
 	loader.type = "text/javascript";
 	loader.src = '/socket.io/socket.io.js';
 	loader.onload = onSocketLoaded;
 	document.body.appendChild(loader);
-}
-else {
-	onExtensionLoaded();
-}
+});
 
 GamePort.onInit(() => {
 	GamePort.register('Reply', (...args) => {

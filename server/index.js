@@ -4,14 +4,27 @@ const KoaStatic = require('koa-static');
 const ResponserList = require('./responser');
 const IO = require('./socket');
 const DefaultType = 'application/json';
+const FS = require('fs');
 
 const app = new Koa();
-const server = require('http').createServer(app.callback());
 const kb = KoaBody({
 	multipart: true,
 	parsedMethods: ['POST', 'PUT', 'PATCH', 'GET', 'HEAD', 'DELETE']
 });
 
+const getLocalIP = () => {
+	var ips = [];
+	var interfaces = require('os').networkInterfaces();
+	for (let networks in interfaces) {
+		networks = interfaces[networks];
+		for (let addr of networks) {
+			addr = addr.address;
+			if (addr === '127.0.0.1' || addr === '::1') continue;
+			if (!ips.includes(addr)) ips.push(addr);
+		}
+	}
+	return ips;
+};
 const matchRouter = (path, method) => {
 	path = path.split(/[\\\/\.,|]/).filter(p => p.length > 0);
 	var p = '/';
@@ -126,9 +139,19 @@ app.use(async ctx => {
 	console.log('result: JobDone');
 });
 
-// socket.io
-IO.init(server);
+module.exports = (port=8001, securePort=8010, callback) => {
+	port = port || 8001;
 
-module.exports = (port, callback) => {
-	server.listen(port || 8001, callback);
+	var csrOption = {
+		key: FS.readFileSync('./CSR/privatekey.pem'),
+		cert: FS.readFileSync('./CSR/certificate.pem'),
+	};
+
+	var nServer = require('http').createServer(app.callback());
+	IO.init(nServer); // socket.io
+	nServer.listen(port, callback);
+
+	var sServer = require('https').createServer(csrOption, app.callback());
+	IO.init(sServer); // socket.io
+	sServer.listen(securePort, callback);
 };

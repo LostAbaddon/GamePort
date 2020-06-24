@@ -1,0 +1,49 @@
+{
+	"name": "游戏中心",
+	"short_name": "GamePort",
+	"description": "Game Port for my own games.",
+	"display": "standalone",
+	"start_url": "./index.html",
+	"lang": "zh-hans",
+	"orientation": "portrait-primary",
+	"theme_color": "#333",
+	"background_color": "#555",
+	"icons": [
+		{
+			"sizes": "48x48",
+			"src": "img/favicon-32x32.png",
+			"type": "image/png"
+		},
+		{
+			"sizes": "72x72",
+			"src": "img/logo.png",
+			"type": "image/png"
+		},
+		{
+			"sizes": "96x96",
+			"src": "img/logo.png",
+			"type": "image/png"
+		},
+		{
+			"sizes": "144x144",
+			"src": "img/logo.png",
+			"type": "image/png"
+		},
+		{
+			"sizes": "168x168",
+			"src": "img/logo.png",
+			"type": "image/png"
+		},
+		{
+			"sizes": "192x192",
+			"src": "img/logo.png",
+			"type": "image/png"
+		}
+	],
+	"serviceworker": {
+		"src": "/service.js",
+		"scope": "/",
+		"type": "",
+		"update_via_cache": "none"
+	}
+}
