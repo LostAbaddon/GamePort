@@ -25,6 +25,7 @@ const BallColor = [
 	[8, [192, 196, 195]],
 ];
 const TagGameSaveName = 'ballcrush_save';
+const TagGameRankList = 'ballcrush_rank';
 
 class Ball {
 	x = 500;
@@ -51,165 +52,161 @@ class Ball {
 		this.p = p;
 	}
 	move (delta) {
+		// 记录原始位置
 		var ox = this.x, oy = this.y;
+		var oriX = ox, oriY = oy;
+
+		// 上方越界则自动认定脱离Ghost状态
 		if (this.y < -100 && this.vy < 0) this.isGhost = false;
 
-		// 运动部分
+		// 运动到新位置
 		this.x += this.vx * delta;
 		this.y += this.vy * delta;
+		// 下方越界则该球脱离运动生命周期
 		if (this.y > 2000 + this.r) {
 			return [false, false];
 		}
 
 		// 碰撞相关
-		var needRedraw = false;
-		var collisions = [];
+		var needRedraw = false; // 撞到了障碍物
+		var collisions = []; // 接触的障碍物
+		var golden = false;
 
-		// 墙壁
-		var vect = wallCollide(this, ox, oy);
-		if (!!vect[0]) {
-			this.mass += 0.02;
-			vect.push(null);
-			collisions.push(vect);
-		}
+		/*	判断逻辑
+		 *	1.	判断在运动路径上是否与障碍物相撞
+		 *	2.	找出最近的相撞的障碍物，进行反弹与衰减
+		 *	3.	用接触位置作为新初始位置，并扣除刚碰撞的物体，找出新运动路径下最近的障碍物，并进行反弹和衰减
+		 *	4.	判断初始位置是否在障碍物内部，如果在内部，则给予斥力
+		**/
 
-		// 与障碍物的碰撞
-		var removes = [], rednecks = [], blackholes = [], killed = false, golden = false;
-		impedes.forEach(imp => {
-			if (imp.isBlackHole) blackholes.push(imp);
-			else if (imp.isRedNeck) rednecks.push(imp);
-			vect = imp.collide(this, ox, oy, delta);
-			if (!vect[0] || vect[3]) return;
-			this.hits ++;
-			vect.push(imp);
-			collisions.push(vect);
-			needRedraw = true;
-			needRewrite = true;
-			if (imp.isBlackHole) {
-				this.p -= imp.p;
-				imp.score += 1;
-				if (this.p <= 0) {
-					this.p = 1;
-					imp.score += 1;
-				}
-				killed = true;
-				this.updateSize();
+		// 计算碰撞
+		var ov = { x: this.vx, y: this.vy };
+		var lastImp = null, collided = true, dlt = delta, loopMax = 10, loop = loopMax, killed = false;
+		while (collided && loop > 0) {
+			loop --;
+			collided = false;
+			let collisions = [];
+
+			// 考试墙壁的情况
+			let vect = wallCollide(ox, oy, this.x, this.y, this);
+			if (!!vect && vect[3] !== lastImp) {
+				collisions.push(vect);
+				collided = true;
 			}
-			else if (imp.isGolden) {
-				imp.p --;
-				if (imp.p === 0) {
-					removes.push(imp);
-					golden = true;
+
+			// 障碍物的情况
+			impedes.forEach(imp => {
+				if (imp === lastImp) return;
+				vect = imp.collide(ox, oy, this.x, this.y, this);
+				if (!vect) return;
+				collisions.push(vect);
+				collided = true;
+			});
+
+			if (!collided) break;
+
+			// 先处理最近的碰撞
+			this.isGhost = false;
+			collisions.sort((a, b) => a[2] - b[2]);
+			collisions = collisions[0];
+			this.vx = collisions[0].x;
+			this.vy = collisions[0].y;
+			ox = collisions[1].x;
+			oy = collisions[1].y;
+			let rate = 1 - collisions[2];
+			rate *= dlt;
+			this.x = ox + this.vx * rate;
+			this.y = oy + this.vy * rate;
+			this.vx *= dump;
+			this.vy *= dump;
+			lastImp = collisions[3];
+			if (isNaN(lastImp)) {
+				needRedraw = true;
+				needRewrite = true;
+
+				if (lastImp.isBlackHole) {
+					this.p -= lastImp.p;
+					lastImp.score += 1;
+					if (this.p <= 0) {
+						this.p = 1;
+						lastImp.score += 1;
+					}
+					killed = true;
+					this.updateSize();
+					break;
 				}
-				score += 1;
-				current += 1;
-				hits += this.p;
-			}
-			else {
-				let s = this.p;
-				if (imp.p < s) {
-					s = imp.p;
-					imp.p = 0;
+				else if (lastImp.isGolden) {
+					this.hits += 2;
+					this.score ++;
+					lastImp.p --;
+					if (lastImp.p === 0) {
+						let idx = impedes.indexOf(lastImp);
+						if (idx >= 0) impedes.splice(idx, 1);
+						golden = true;
+						this.score += this.p;
+					}
+					score += 1;
+					current += 1;
+					hits += this.p;
 				}
 				else {
-					imp.p -= this.p;
-				}
-				score += s;
-				current += s;
-				if (imp.isRedNeck) {
-					this.score ++;
+					let p = this.p;
+					if (p > lastImp.p) p = lastImp.p;
+					this.hits += p;
+					lastImp.p -= p;
+					score += p;
+					current += p;
 					hits ++;
+					if (lastImp.isRedNeck) {
+						this.score += p;
+						hits ++;
+					}
+					if (lastImp.p === 0) {
+						let idx = impedes.indexOf(lastImp);
+						if (idx >= 0) impedes.splice(idx, 1);
+						if (this.hits > 1) {
+							if (lastImp.isRedNeck) {
+								this.score += lastImp.max;
+							}
+							else {
+								this.score ++;
+							}
+						}
+					}
 				}
-				if (imp.p === 0) {
-					removes.push(imp);
-				}
-				hits ++;
 			}
-		});
+		}
 
 		if (killed) {
 			return [true, needRedraw, true];
 		}
 
-		// 整合碰撞结果
-		var vx = 0, vy = 0, sx = 0, sy = 0;
-		if (collisions.length > 0) {
-			let pow = 0;
-			collisions.forEach(v => {
-				var s, p, fi, imp;
-				[v, s, p, fi, imp] = v;
-				pow += p;
-				vx += v.x * p;
-				vy += v.y * p;
-				sx += s.x * p;
-				sy += s.y * p;
-				if (fi && !!imp) {
-					let dx = this.x - imp.x, dy = this.y - imp.y;
-					let r1 = dx ** 2 + dy ** 2;
-					let f = repel / r1;
-					sx += f * dx * p;
-					sy += f * dy * p;
-				}
-			});
-			this.vx = vx / collisions.length / pow;
-			this.vy = vy / collisions.length / pow;
-			if (Math.abs(this.vx) <= MinVelocity && Math.abs(this.vy) <= MinVelocity) {
-				let vr = (this.vx ** 2 + this.vy ** 2) ** 0.5;
-				if (vr > 0 && vr < MinVelocity) {
-					vr = MinVelocity / vr;
-					this.vx = this.vx * vr;
-					this.vy = this.vy * vr;
-				}
-			}
-			sx /= pow;
-			sy /= pow;
-			this.x += sx;
-			this.y += sy;
-			this.isGhost = false;
+		// 由于在障碍物内部而产生的斥力
+		var forceX = 0, forceY = 0;
 
-			let inside = false;
-			let ovx = ox - this.x;
-			let ovy = oy - this.y;
-			if (ovx !== 0 || ovy !== 0) {
-				let oox = this.x;
-				let ooy = this.y;
-				let ovr = (ovx * ovx + ovy * ovy) ** 0.5;
-				ovx /= ovr;
-				ovy /= ovr;
-				ovr = Math.ceil(ovr / ShiftLength);
-				for (let i = 0; i <= ovr; i ++) {
-					inside = false;
-					this.x = oox + ovx * i;
-					this.y = ooy + ovy * i;
-					impedes.some(imp => {
-						var i = imp.doesInside(this.x, this.y, this.r);
-						if (i) {
-							inside = true;
-							return true;
-						}
-					});
-					if (!inside) {
-						break;
-					}
-				}
-				if (inside) {
-					impedes.some(imp => {
-						var i = imp.doesInside(this.x, this.y, this.r);
-						if (i) {
-							let dx = this.x - imp.x, dy = this.y - imp.y;
-							let r1 = dx ** 2 + dy ** 2;
-							let f = repel / r1;
-							this.vx += f * dx;
-							this.vy += f * dy;
-						}
-					});
-				}
-			}
+		// 墙壁的情况
+		if (this.x < this.r) {
+			forceX = this.r - this.x;
+		}
+		else if (this.x > 1000 - this.r) {
+			forceX = this.x + this.r - 1000;
+		}
+		if (this.y < this.r) {
+			forceY = this.r - this.y;
 		}
 
-		// 红脖球的斥力
-		vx = 0;
-		vy = 0;
+		// 障碍物的情况
+		var blackholes = [], rednecks = [];
+		impedes.forEach(imp => {
+			if (imp.isBlackHole) blackholes.push(imp);
+			else if (imp.isRedNeck) rednecks.push(imp);
+			var f = imp.doesInside(this.x, this.y, this.r);
+			if (!f) return;
+			forceX += f.x;
+			forceY += f.y;
+		});
+
+		// 红脖斥力
 		rednecks.forEach(r => {
 			if (r.p <= 0) return;
 			var dx = this.x - r.x;
@@ -226,9 +223,10 @@ class Ball {
 			if (fx > gravity) fx = gravity;
 			var fy = fx * dy;
 			fx = fx * dx;
-			vx += fx;
-			vy += fy;
+			forceX += fx / this.mass / delta;
+			forceY += fy / this.mass / delta;
 		});
+		// 黑洞引力
 		blackholes.forEach(r => {
 			if (r.p <= 0) return;
 			var dx = r.x - this.x;
@@ -244,65 +242,37 @@ class Ball {
 			if (fx > gravity) fx = gravity;
 			var fy = fx * dy;
 			fx = fx * dx;
-			vx += fx;
-			vy += fy;
+			forceX += fx / this.mass / delta;
+			forceY += fy / this.mass / delta;
 		});
 
+		// 对于非初始状态的处理
 		if (!this.isGhost) {
 			// 空气阻力
-			var r = 1;
-			if (removes.length) r = 4;
-			else if (collisions.length > 0) r = 2;
-			else r = 1 / (1 + (this.p - 1) / 3);
-			r *= resistance;
-			vx -= this.vx * r * delta;
-			vy -= this.vy * r * delta;
+			forceX -= this.vx * resistance;
+			forceY -= this.vy * resistance;
 
 			// 引力
-			vy += gravity * this.mass * delta;
+			forceY += gravity;
 		}
-		this.vx += vx;
-		this.vy += vy;
+		this.vx += forceX * delta;
+		this.vy += forceY * delta;
 
 		// 重力改变
-		if (Math.abs(this.x - ox) + Math.abs(this.y - oy) < MinVelocity) {
-			if (Math.abs(vy) < MinVelocity) {
+		if (Math.abs(this.x - oriX) + Math.abs(this.y - oriY) < MinVelocity) {
+			if (Math.abs(this.vy) < MinVelocity) {
 				this.mass += 0.1;
 			}
 		}
 
-		// 移除被撞碎的障碍物
-		if (removes.length > 0) {
-			removes.forEach(imp => {
-				var i = impedes.indexOf(imp);
-				if (i < 0) return;
-				impedes.splice(i, 1);
-				if (this.hits > 1) this.score ++;
-				if (this.hits > 5) this.score ++;
-				if (imp.isRedNeck) {
-					this.score ++;
-					hits += this.p;
-				}
-				else if (imp.isGolden) {
-					this.score *= 2;
-					hits += this.p;
-				}
-				else if (imp.isBlackHole) {
-					this.score += imp.max;
-					hits += imp.max;
-				}
-			});
-			needRewrite = true;
-		}
-
 		// 球升级
-		if (this.score > 8 * this.p ** 2 + (this.p - 1) ** 3 - 4) {
+		if (this.score > 8 * this.p ** 2.5 + (this.p - 1) ** 3.5 - 4) {
 			this.score = 0;
 			this.p ++;
 			this.updateSize();
 		}
 		// 球增殖
-		if (hits > 5 * (count ** 1.8) + (count / 10) ** 2 + 0.1 * (count / 20) ** 5 - 3) {
+		if (hits > 5 * (count ** 1.8) + (count / 10) ** 2 + 0.2 * (count / 20) ** 5 + (count / 30) ** 8 - 3) {
 			hits -= 10 * count;
 			if (hits < 0) hits = 0;
 			generateBalls(true);
@@ -335,30 +305,7 @@ class Ball {
 		}
 		drawBall(this.x, this.y, this.r, c, b, this.text, t, this.isBall);
 	}
-	collide (ball, x, y, delta) {
-		var [hitted, px, py, pt] = this.getHitPointOnCorner(x, y, ball.x, ball.y, this.x, this.y, this.r + ball.r);
-		if (!hitted) return [null, null, 0];
-
-		var dx = px - this.x;
-		var dy = py - this.y;
-		var ang = 2 * Math.atan2(dx, dy);
-		var sa = Math.sin(ang), ca = Math.cos(ang);
-		var velocity = {
-			x: ball.vx * ca - ball.vy * sa,
-			y: - ball.vy * ca - ball.vx * sa
-		};
-		var shift = {x: px - ball.x, y: py - ball.y};
-
-		var fromInside = false;
-		var dr = this.r + ball.r;
-		dx = x - this.x, dy = y - this.y;
-		if (Math.abs(dx) <= dr && Math.abs(dy) < dr) fromInside = ((dx ** 2 + dy ** 2) - dr ** 2 < 0);
-		shift.x += (velocity.x - this.vx) * (1 - pt) * delta * resistance;
-		shift.y += (velocity.y - this.vy) * (1 - pt) * delta * resistance;
-
-		return [velocity, shift, 1.1 - pt, fromInside];
-	}
-	getHitPointOnCorner (x1, y1, x2, y2, cx, cy, r) {
+	static getHitPointOnCircle (x1, y1, x2, y2, cx, cy, r) {
 		var x21 = x2 - x1, y21 = y2 - y1;
 		var x10 = x1 - cx, y10 = y1 - cy;
 		var R212 = x21 * x21 + y21 * y21;
@@ -366,25 +313,46 @@ class Ball {
 		var V1021 = x10 * x21 + y10 * y21;
 
 		var pt = V1021 * V1021 - (R102 - r * r) * R212;
-		if (pt < 0) return [false];
+		if (pt < 0) return null;
 		pt = Math.sqrt(pt);
 		var nt =  - (V1021 - pt) / R212;
 		pt = - (V1021 + pt) / R212;
-		if (pt < 0) return [false];
-		if (pt > 1) return [false];
+		if (pt < 0) return null;
+		if (pt > 1) return null;
 		var px = x1 + pt * x21;
 		var py = y1 + pt * y21;
 		var fromInside = false;
 		var dx = x1 - cx, dy = y1 - cy;
 		if (Math.abs(dx) <= r && Math.abs(dy) < r) fromInside = ((dx ** 2 + dy ** 2) - r ** 2 < 0);
-		return [true, px, py, pt, fromInside];
+		return [px, py, pt, fromInside];
+	}
+	collide (x1, y1, x2, y2, target) {
+		var hitPoint = Ball.getHitPointOnCircle(x1, y1, x2, y2, this.x, this.y, target.r + this.r);
+		if (!hitPoint) return null;
+
+		var [hitX, hitY, rate, inside] = hitPoint;
+		if (inside) return null; // 从内向外的撞击不考虑
+
+		// 返回内容：反弹后速度矢量、接触点坐标、发生碰撞的时间序、自己
+		var touchPoint = { x: hitX, y: hitY};
+		var velocity = { x: 0, y: 0};
+		var ang = 2 * Math.atan2(hitX - this.x, hitY - this.y);
+		var sa = Math.sin(ang), ca = Math.cos(ang);
+		velocity.x = target.vx * ca - target.vy * sa;
+		velocity.y = 0 - target.vy * ca - target.vx * sa;
+
+		return [velocity, touchPoint, rate, this];
 	}
 	doesInside (x, y, r) {
-		var fromInside = false;
 		var dr = this.r + r, dx = x - this.x, dy = y - this.y;
-		if (Math.abs(dx) <= dr && Math.abs(dy) < dr) fromInside = ((dx ** 2 + dy ** 2) - dr ** 2 < 0);
-
-		return fromInside;
+		var dis = Math.sqrt(dx * dx + dy * dy);
+		if (dis > dr) return null;
+		dr = dr - dis;
+		dr /= dis;
+		return {
+			x: dx * dr,
+			y: dy * dr
+		};
 	}
 }
 class Poly extends Ball {
@@ -425,200 +393,160 @@ class Poly extends Ball {
 		}
 		drawPoly(this.x, this.y, this.r, this.poly, this.ang, c, b, this.text, t);
 	}
-	collide (ball, x, y, delta) {
-		// 预判断
-		var [hitted, px, py, pt] = this.getClosestPoint(x, y, ball.x, ball.y); // 距离中心最近的点
-		var dx = px - this.x;
-		var dy = py - this.y;
-		var dl = ball.r + this.r;
-		if (Math.abs(dx) > dl || Math.abs(dy) > dl) return [null];
+	collide (x1, y1, x2, y2, target) {
+		x1 -= this.x;
+		y1 -= this.y;
+		x2 -= this.x;
+		y2 -= this.y;
 
-		// 找出所有顶角位置
-		var vertexList = [], ang = Math.PI * 2 / this.poly, half = ang / 2;
-		if (this.length === 0) this.length = 2 * this.r * Math.sin(half);
-		var er = this.r + ball.r / Math.cos(half);
-		var extLen = 2 * er * Math.sin(half);
-		for (let i = 0; i <= this.poly; i ++) {
-			let a = this.ang + ang * i;
-			let sa = Math.sin(a), ca = Math.cos(a);
-			vertexList[i] = {
-				x: this.x + er * Math.sin(a),
-				y: this.y + er * Math.cos(a)
-			};
-			vertexList[this.poly + 2 + i] = {
-				x: this.x + this.r * Math.sin(a),
-				y: this.y + this.r * Math.cos(a)
-			};
-		}
-
-		var velocity = {}, shift = {}, pt, fromInside = false;
-
-		// 判断是否撞到线
-		hitted = [];
+		// 对边和角进行处理
+		var ang = Math.PI * 2 / this.poly, half = ang / 2, sh = Math.sin(half), ch = Math.cos(half);
+		var extendR = this.r + target.r / ch;
+		var innerR = this.r * ch + target.r;
+		var limitHigh = this.r * sh, limitLow = -limitHigh;
+		var cornerX = limitHigh, cornerY = this.r * ch;
+		var rotate = this.ang + half;
+		var collisions = [];
 		for (let i = 0; i < this.poly; i ++) {
-			let v1 = vertexList[i], v2 = vertexList[i + 1];
-			let p = this.getHitPointOnLine(x, y, ball.x, ball.y, v1.x, v1.y, v2.x, v2.y, extLen);
-			if (p[0]) hitted.push([i, ...(p.splice(1, p.length))]);
-		}
-		// 如果撞到线
-		if (hitted.length > 0) {
-			hitted.sort((h1, h2) => Math.abs(h1[3] + 1) - Math.abs(h2[3] + 1));
-			hitted = hitted[0];
-			shift = {x: hitted[1] - ball.x, y: hitted[2] - ball.y};
-			let a = 2 * (this.ang + half + ang * hitted[0]);
-			let vx = ball.vx, vy = - ball.vy;
-			let sa = Math.sin(a), ca = Math.cos(a);
-			fromInside = hitted[4];
-			pt = hitted[3];
-			velocity.x = vx * ca + vy * sa;
-			velocity.y = vy * ca - vx * sa;
-			shift.x += (velocity.x - this.vx) * (1 - pt) * delta * resistance;
-			shift.y += (velocity.y - this.vy) * (1 - pt) * delta * resistance;
-			return [velocity, shift, 1.1 - pt, fromInside];
-		}
+			rotate += ang;
 
-		// 如果没撞到线，则检查是否撞到顶角
-		hitted = [];
-		for (let i = 0; i < this.poly; i ++) {
-			let v = vertexList[this.poly + 2 + i];
-			let h = this.getHitPointOnCorner(x, y, ball.x, ball.y, v.x, v.y, ball.r);
-			if (h[0]) hitted.push([...h, v]);
-		}
-		// 如果撞到顶角
-		if (hitted.length > 0) {
-			hitted.sort((h1, h2) => Math.abs(h1[3] + 1) - Math.abs(h2[3] + 1));
-			hitted = hitted[0];
-			let vertex = hitted[5];
-			let px = hitted[1];
-			let py = hitted[2];
-			pt = hitted[3];
-			let dx = px - vertex.x;
-			let dy = py - vertex.y;
-			let ang = 2 * Math.atan2(dx, dy);
-			let sa = Math.sin(ang), ca = Math.cos(ang);
-			fromInside = hitted[4];
-			velocity.x = ball.vx * ca - ball.vy * sa;
-			velocity.y = - ball.vy * ca - ball.vx * sa;
-			shift = {x: px - ball.x, y: py - ball.y};
-			shift.x += (velocity.x - this.vx) * (1 - pt) * delta * resistance;
-			shift.y += (velocity.y - this.vy) * (1 - pt) * delta * resistance;
-			return [velocity, shift, 1.1 - pt, fromInside];
-		}
-		return [null];
-	}
-	getClosestPoint (x1, y1, x2, y2) {
-		var dx = x2 - x1;
-		var dy = y2 - y1;
-		var dr2 = dx * dx + dy * dy;
-		var pt = ((this.y - y1) * dy + (this.x - x1) * dx) / dr2;
-		if (pt < 0) return [true, x1, y1, 0];
-		if (pt > 1) return [true, x2, y2, 1];
-		var px = x1 + pt * dx;
-		var py = y1 + pt * dy;
-		return [true, px, py, pt];
-	}
-	getHitPointOnLine (x1, y1, x2, y2, vx1, vy1, vx2, vy2, extLen) {
-		var checker = (vx2 - vx1) * (y2 - y1) - (vy2 - vy1) * (x2 - x1);
-		if (checker === 0) return [false];
+			let collided = false;
+			// 对球中心位置做旋转，旋转后待测试边为ry常值面
+			let sa = Math.sin(rotate), ca = Math.cos(rotate);
+			let rx1 = x1 * ca - y1 * sa;
+			let ry1 = y1 * ca + x1 * sa;
+			let rx2 = x2 * ca - y2 * sa;
+			let ry2 = y2 * ca + x2 * sa;
 
-		var pt = (vx2 - vx1) * (vy1 - y1) - (vy2 - vy1) * (vx1 - x1);
-		pt /= checker;
-		if (pt < 0 || pt > 1) return [false];
+			let hitted = ry2 <= extendR && ry2 >= 0;
+			if (!hitted) continue;
 
-		var pr = (vy1 - y1) * (x2 - x1) - (vx1 - x1) * (y2 - y1);
-		pr /= checker;
-		var bra = (extLen - this.length) / 2;
-		var ket = bra / extLen;
-		bra = ket;
-		ket = 1 - ket;
-		if (pr < bra || pr > ket) return [false];
-
-		var px = x1 + pt * (x2 - x1);
-		var py = y1 + pt * (y2 - y1);
-
-		vx1 = vx1 - this.x;
-		vy1 = vy1 - this.y;
-		vx2 = vx2 - this.x;
-		vy2 = vy2 - this.y;
-		x1 = x1 - this.x;
-		y1 = y1 - this.y;
-		var fromInside = false;
-		var delta = (vx1 - vx2) ** 2 + (vy1 - vy2) ** 2;
-		var nx1 = (vx1 * (vx1 - vx2) + vy1 * (vy1 - vy2)) / delta;
-		var nx2 = (vx2 * (vx1 - vx2) + vy2 * (vy1 - vy2)) / delta;
-		x2  = (x1 * (vx1 - vx2) + y1 * (vy1 - vy2)) / delta;
-		if ((x2 - nx1) * (x2 - nx2) >= 0) {
-			let ny = ( vx1 * vy2 - vx2 * vy1 ) / delta;
-			y2  = (y1 * (vx1 - vx2) - x1 * (vy1 - vy2)) / delta;
-			if (y2 > 0 && ny > 0) {
-				if (y2 < ny) fromInside = true;
+			hitted = false;
+			let maybeCorner = false;
+			let rate = 0, hitX = 0, hitY = 0;
+			if (ry1 === ry2) {
+				hitted = true;
+				maybeCorner = true;
 			}
-			else if (y2 < 0 && ny < 0) {
-				if (y2 > ny) fromInside = true;
+			else {
+				rate = (ry1 - innerR) / (ry1 - ry2);
+				hitX = rx1 + (rx2 - rx1) * rate;
+				hitY = ry1 + (ry2 - ry1) * rate;
+				hitted = true;
+				if (hitX >= limitLow && hitX <= limitHigh) {
+					if (rate < 0 || rate > 1) {
+						maybeCorner = true;
+					}
+				}
+				else {
+					maybeCorner = true;
+				}
+			}
+			if (!hitted) continue;
+
+			let vx = target.vx * ca - target.vy * sa;
+			let vy = target.vy * ca + target.vx * sa;
+			// 如果可能接触到边
+			if (maybeCorner) {
+				// 如果是撞到角的情况
+				let info = Ball.getHitPointOnCircle(rx1, ry1, rx2, ry2, cornerX, cornerY, target.r);
+				if (!info) continue;
+				if (info[3]) continue;
+
+				let velocity = {}, touchPoint = {};
+				touchPoint.x = info[0];
+				touchPoint.y = info[1];
+				let ang = 2 * Math.atan2(info[0] - cornerX, info[1] - cornerY);
+				let asa = Math.sin(ang), aca = Math.cos(ang);
+				velocity.x = vx * aca - vy * asa;
+				velocity.y = 0 - vy * aca - vx * asa;
+				collisions.push([velocity, touchPoint, info[2], sa, ca, true]);
+			}
+			else {
+				// 如果是撞到边的情况
+				let velocity = {}, touchPoint = {};
+				velocity.x = vx;
+				velocity.y = Math.abs(vy);
+				touchPoint.x = hitX;
+				touchPoint.y = hitY;
+				collisions.push([velocity, touchPoint, rate, sa, ca, false]);
 			}
 		}
+		if (collisions.length === 0) return null;
+		collisions.sort((a, b) => a[2] - b[2]);
+		collisions = collisions[0];
 
+		var v = collisions[0], p = collisions[1], sa = collisions[3], ca = collisions[4];
+		var velo = {}, loc = {};
+		velo.x = v.x * ca + v.y * sa;
+		velo.y = v.y * ca - v.x * sa;
+		loc.x = p.x * ca + p.y * sa + this.x;
+		loc.y = p.y * ca - p.x * sa + this.y;
 
-		return [true, px, py, pt, fromInside];
+		return [velo, loc, collisions[2], this];
 	}
 	doesInside (x, y, r) {
 		// 预判断
 		x = x - this.x;
 		y = y - this.y;
-		var er = r + this.r;
-		// if (Math.abs(x) > er || Math.abs(y) > er) return false;
+		var extendR = r + this.r;
+		if (Math.abs(x) > extendR || Math.abs(y) > extendR) return null;
 
-		// 对边进行处理
-		var vertexList = [], ang = Math.PI * 2 / this.poly, half = ang / 2;
-		er = this.r + r / Math.cos(half);
-		var rate1 = r / er / 2, rate2 = 1 - rate1;
-		var r2 = r ** 2;
-		var rotate = this.ang;
-		var lastX = er * Math.sin(rotate), lastY = er * Math.cos(rotate);
+		// 对边和角进行处理
+		var ang = Math.PI * 2 / this.poly, half = ang / 2, sh = Math.sin(half), ch = Math.cos(half);
+		var innerR = r + this.r * ch;
+		var limitHigh = this.r * sh, limitLow = -limitHigh;
+		var cornerX = limitHigh, cornerY = this.r * ch;
+		var rotate = this.ang + half;
+		var collisions = [];
 		for (let i = 0; i < this.poly; i ++) {
-			rotate += ang;
+			let collided = false;
+			// 对球中心位置做旋转，旋转后待测试边为ry常值面
 			let sa = Math.sin(rotate), ca = Math.cos(rotate);
-			let cx = er * Math.sin(rotate);
-			let cy = er * Math.cos(rotate);
+			let rx = x * ca - y * sa;
+			let ry = y * ca + x * sa;
 
-			let fromInside = false;
-			// let delta = (lastX - cx) ** 2 + (lastY - cy) ** 2;
-			let nx1 = (lastX * (lastX - cx) + lastY * (lastY - cy));
-			let nx2 = (cx * (lastX - cx) + cy * (lastY - cy));
-			let dx  = (x * (lastX - cx) + y * (lastY - cy)), dy = 0;
-			let rate = (dx - nx1) / (nx2 - nx1);
-			if (rate >= rate1 && rate <= rate2) {
-				let ny = ( lastX * cy - cx * lastY );
-				dy  = (y * (lastX - cx) - x * (lastY - cy));
-				if (dy >= 0 && ny > 0) {
-					if (dy < ny) fromInside = true;
-				}
-				else if (dy <= 0 && ny < 0) {
-					if (dy > ny) fromInside = true;
-				}
+			// 肯定不会发生碰撞的情况
+			if (ry > innerR || ry < 0) continue;
+
+			// 判断是否撞到边
+			if (rx >= limitLow && rx <= limitHigh) {
+				let force = {
+					x: 0,
+					y: innerR - ry
+				};
+				collisions.push([rx, ry, rotate, false, force.y, force, sa, ca]);
 			}
-
-			if (fromInside) return true;
-
-			lastX = cx;
-			lastY = cy;
-
-			cx = this.r * Math.sin(rotate);
-			cy = this.r * Math.cos(rotate);
-			dx = Math.abs(x - cx);
-			dy = Math.abs(y - cy);
-			if (dx < r && dy < r) {
-				if (dx ** 2 + dy ** 2 < r2) return true;
+			else {
+				let dx = rx - cornerX, dy = ry - cornerY;
+				let dis = Math.sqrt(dx * dx + dy * dy);
+				if (dis > r) continue;
+				let rate = r - dis;
+				dis = rate / dis;
+				let force = {
+					x: dx * dis,
+					y: dy * dis
+				};
+				collisions.push([rx, ry, rotate, true, rate, force, sa, ca]);
 			}
+			rotate += ang;
 		}
-		return false;
+		if (collisions.length === 0) return null;
+		collisions.sort((a, b) => a[4] - b[4]);
+		collisions = collisions[0];
+
+		var force = { x: 0, y: 0 };
+		var coll = collisions[5], ang = [collisions[6], collisions[7]];
+		force.x = coll.x * ang[1] + coll.y * ang[0];
+		force.y = coll.y * ang[1] - coll.x * ang[0];
+		return force;
 	}
 }
 
 var score = 0, count = 0, power = 0, current = 0, hits = 0, ctx, timer, stamp = 0;
 var elS, elC, elP, elT, elL;
 var px = 500, py = 9;
-var gravity = 9000, resistance = 0.6, repel = 400000, attraction = 100000;
+var gravity = 9000, resistance = 0.3, repel = 200000, attraction = 100000, dump = 0.9;
 var gameStatus = 0; // 0: 闲置; 1: 落球; 2: 移关中; 3: 暂停
 var targetX = 0, targetY = 0, waiting = 0, needRewrite = false, needCombine = false;
 var impedes = [], level = 1;
@@ -628,10 +556,10 @@ var balls = [], readyBalls = [], activeBalls = [];
 const ModeSelector = {
 	difficult: 0,
 	finish: 0,
-	newLine0 () {
-		return ModeSelector.newLine1(false, false);
+	newLine0 (isReady=true) {
+		return ModeSelector.newLine1(isReady, false, false);
 	},
-	newLine1 (useBlackHole=true, useRedNecker=true) {
+	newLine1 (isReady=true, useBlackHole=true, useRedNecker=true) {
 		var results = [];
 		var total = 3 + Math.floor(Math.random() * 3.5), w = 1000;
 		var disappear = (1 / 2 - 1 / total) / 2.5;
@@ -641,9 +569,15 @@ const ModeSelector = {
 			cC = 100;
 			cP = 150;
 		}
+		else {
+			if (cC < 1) cC = 1;
+			if (cP < 1) cP = 1;
+			if (cT < 1) cT = 1;
+		}
 		var pMin = 1 + Math.round(((cL ** 1.05) + ((cL / 10) ** 2)) * (cT ** 0.1) + (cP ** 0.8));
 		var pMax = pMin + Math.round((cL ** 0.4) + (cP ** 0.3) + (cT ** 0.1));
 		var rateGoldApple = Math.sqrt((cC - 8) / cC) / 8;
+		if (ModeSelector.finish === 0) rateGoldApple /= 2;
 		var rateBlackHole = 0;
 		var rateRedNecker = 0;
 		if (useBlackHole) rateBlackHole = (cL - 10) / cL / 25;
@@ -685,7 +619,7 @@ const ModeSelector = {
 			l += ll + b.r;
 			ll = b.r;
 			b.x = px + l + delta;
-			b.y = py;
+			b.y = py + (isReady ? 0 : 220);
 			if (Math.random() > disappear) impedes.push(b);
 			delta += px;
 			cc --;
@@ -898,48 +832,80 @@ const combineBalls = () => {
 	balls.forEach(b => power += b.p);
 	updateInfo();
 };
-const wallCollide = (ball, x, y) => {
-	var result = {};
-	var shift = {x: 0, y: 0};
-	var fromInside = false;
-	if (ball.x <= ball.r) {
-		result.y = ball.vy;
-		result.x = Math.abs(ball.vx);
-		shift.x = ball.r - ball.x;
-		if (x < ball.r) fromInside = true;
+const wallCollide = (x1, y1, x2, y2, target) => {
+	// 返回内容：反弹后速度矢量、接触点坐标、发生碰撞的时间序、墙壁序号
+	var velocity = { x: 0, y: 0 };
+	var touchPoint = { x: 0, y: 0 };
+	var rate = 0;
+	var wall = '';
+
+	if (x2 <= target.r) {
+		velocity.y = target.vy;
+		velocity.x = Math.abs(target.vx);
+		touchPoint.x = target.r;
+		if (x1 <= target.r) {
+			rate = 0;
+			touchPoint.y = y1;
+		}
+		else {
+			rate = (target.r - x1) / (x2 - x1);
+			touchPoint.y = y1 + (y2 - y1) * rate;
+		}
+		wall = 1;
 	}
-	else if (ball.x >= 1000 - ball.r) {
-		result.y = ball.vy;
-		result.x = 0 - Math.abs(ball.vx);
-		shift.x = 1000 - ball.r - ball.x;
-		if (x > 1000 - ball.r) fromInside = true;
+	else if (x2 >= 1000 - target.r) {
+		velocity.y = target.vy;
+		velocity.x = 0 - Math.abs(target.vx);
+		touchPoint.x = 1000 - target.r;
+		if (x1 <= target.r) {
+			rate = 0;
+			touchPoint.y = y1;
+		}
+		else {
+			rate = (1000 - target.r - x1) / (x2 - x1);
+			touchPoint.y = y1 + (y2 - y1) * rate;
+		}
+		wall = 2;
 	}
-	else if (!ball.isGhost && ball.y <= ball.r) {
-		result.x = ball.vx;
-		result.y = Math.abs(ball.vy);
-		shift.y = ball.r - ball.y;
-		if (y < ball.r) fromInside = true;
+	else if (!target.isGhost && y2 <= target.r) {
+		velocity.x = target.vx;
+		velocity.y = Math.abs(target.vy);
+		touchPoint.y = target.r;
+		if (y1 <= target.r) {
+			rate = 0;
+			touchPoint.x = x1;
+		}
+		else {
+			rate = (target.r - y1) / (y2 - y1);
+			touchPoint.x = x1 + (x2 - x1) * rate;
+		}
+		wall = 3;
 	}
-	else return [null];
-	return [result, shift, 1.1, fromInside];
+	else return null;
+	return [velocity, touchPoint, rate, wall];
 };
-const newLine = () => {
+const newLine = (isReady=true) => {
 	var result;
 	if (ModeSelector.difficult === 0) {
-		result = ModeSelector.newLine0();
+		result = ModeSelector.newLine0(isReady);
 	}
 	else if (ModeSelector.difficult === 1) {
-		result = ModeSelector.newLine1();
+		result = ModeSelector.newLine1(isReady);
 	}
-	saveStage();
+	if (isReady) saveStage();
 	return result;
 };
-const nextLine = () => {
+const moveLine = notFinish => {
+	impedes.forEach(imp => imp.y -= 10);
+	if (notFinish) return;
+	saveStage();
+	gameStatus = 0;
+};
+const nextLine = notFinish => {
 	level ++;
-	impedes.forEach(imp => imp.y -= 220);
 	var kills = 0;
 	impedes = impedes.filter(imp => {
-		if (imp.y > 0) {
+		if (imp.y > 220) {
 			if (imp.isBlackHole) {
 				imp.life --;
 				if (imp.life === 0) {
@@ -985,20 +951,81 @@ const nextLine = () => {
 			balls.splice(ZenCount, l - ZenCount);
 		}
 	}
+
 	count = balls.length;
 	power = 0;
 	balls.forEach(b => power += b.p);
 	updateInfo();
 	if (count === 0) {
-		localStorage.removeItem(TagGameSaveName);
-		let pad = document.querySelector('div.container div.area div.infoPad[name="GameEnd"]');
-		pad.classList.add('shown');
-		gameStatus = 3;
-		if (!!timer) clearTimeout(timer);
+		gameOver();
 	}
 	else {
-		newLine();
+		newLine(false);
 	}
+};
+const gameOver = () => {
+	localStorage.removeItem(TagGameSaveName);
+
+	var rankList = localStorage.getItem(TagGameRankList);
+	if (!rankList) {
+		rankList = {};
+	}
+	try {
+		rankList = JSON.parse(rankList);
+	}
+	catch {
+		rankList = {};
+	}
+	var list;
+	if (ModeSelector.difficult === 0) {
+		rankList.normal = rankList.normal || [];
+		list = rankList.normal;
+	}
+	else if (ModeSelector.difficult === 1) {
+		rankList.hell = rankList.hell || [];
+		list = rankList.hell;
+	}
+	else {
+		list = [];
+	}
+	list.push({
+		stamp: Date.now(),
+		level, score
+	});
+	list.sort((a, b) => b.score - a.score);
+	if (list.length > 10) {
+		list.splice(10, list.length - 10);
+	}
+	localStorage.setItem(TagGameRankList, JSON.stringify(rankList))
+
+	let pad = document.querySelector('div.container div.area div.infoPad[name="GameEnd"]');
+	var text = '<div class="title"><div>胜败乃兵家常事，<br>大侠请重来一次！</div><ol>';
+	text += '<p><span class="date title">时间</span><span class="score title">得分</span><span class="level title">关数</span></p>';
+	list.forEach(item => {
+		var t = '<li>';
+		t += '<span class="date">' + convertTimestamp(item.stamp) + '</span>';
+		t += '<span class="score">' + item.score + '</span>';
+		t += '<span class="level">' + item.level + '</span>';
+		t += '</li>';
+		text += t;
+	});
+	text += '</ol></div>';
+	pad.innerHTML = text;
+	pad.classList.add('shown');
+
+	gameStatus = 3;
+	if (!!timer) clearTimeout(timer);
+};
+const convertTimestamp = stamp => {
+	var D = new Date(stamp);
+	var y = D.getFullYear() - 2000;
+	var m = D.getMonth() + 1;
+	var d = D.getDate();
+	var result = y + '/' + m + '/' + d + ' ';
+	return result;
+	y = D.getHours();
+	m = D.getMinutes();
+	return result + y + ':' + m;
 };
 const saveStage = () => {
 	var stage = {
@@ -1074,106 +1101,99 @@ const gameStart = () => {
 	timer = setTimeout(mainLoop, Duration);
 };
 const normalLoop = delta => {
-	if (stamp > 0) {
-		if (readyBalls.length > 0) {
-			if (waiting === 0) {
-				activeBalls.push(readyBalls.splice(0, 1)[0]);
-				let l = count / 30;
-				waiting = Math.round(4 + 6 / (l + 1));
-			}
-			else {
-				waiting --;
+	if (stamp <= 0) return;
+
+	if (readyBalls.length > 0) {
+		if (waiting === 0) {
+			activeBalls.push(readyBalls.splice(0, 1)[0]);
+			let l = count / 30;
+			waiting = Math.round(4 + 6 / (l + 1));
+		}
+		else {
+			waiting --;
+		}
+	}
+
+	let removes = [];
+	let needRedraw = false;
+	let zerohitted = false;
+	impedes.forEach(imp => {
+		if (imp.rotate === 0) return;
+		needRedraw = true;
+		imp.ang += imp.rotate;
+		if (imp.rotate > 0 && imp.ang > Math.PI * 2) imp.ang -= Math.PI * 2;
+		else if (imp.rotate < 0 && imp.ang < -Math.PI * 2) imp.ang += Math.PI * 2;
+	});
+	activeBalls.forEach((ball, index) => {
+		var [move, redraw, killed, golden] = ball.move(delta);
+		if (killed) {
+			balls.push(ball);
+			removes.push(index);
+			if (redraw) {
+				needRedraw = true;
 			}
 		}
-
-		let removes = [];
-		let needRedraw = false;
-		let zerohitted = false;
-		impedes.forEach(imp => {
-			if (imp.rotate === 0) return;
-			needRedraw = true;
-			imp.ang += imp.rotate;
-			if (imp.rotate > 0 && imp.ang > Math.PI * 2) imp.ang -= Math.PI * 2;
-			else if (imp.rotate < 0 && imp.ang < -Math.PI * 2) imp.ang += Math.PI * 2;
-		});
-		activeBalls.forEach((ball, index) => {
-			var [move, redraw, killed, golden] = ball.move(delta);
-			if (killed) {
-				balls.push(ball);
-				removes.push(index);
+		else {
+			if (move) {
+				ball.draw();
 				if (redraw) {
 					needRedraw = true;
 				}
+				if (golden) {
+					needCombine = true;
+					let b = new Ball(0, 0);
+					b.isBall = true;
+					b.isGhost = true;
+					b.mass = 1;
+					b.vx = targetX;
+					b.vy = targetY;
+					b.x = 500;
+					b.y = 0;
+					b.p = ball.p;
+					readyBalls.push(b);
+				}
 			}
 			else {
-				if (move) {
-					ball.draw();
-					if (redraw) {
-						needRedraw = true;
-					}
-					if (golden) {
-						needCombine = true;
-						let b = new Ball(0, 0);
-						b.isBall = true;
-						b.isGhost = true;
-						b.mass = 1;
-						b.vx = targetX;
-						b.vy = targetY;
-						b.x = 500;
-						b.y = 0;
-						b.p = ball.p;
-						readyBalls.push(b);
-					}
-				}
-				else {
-					let alive = true;
-					if (ball.hits === 0) {
-						zerohitted = true;
-						if (ball.score === 0) {
-							ball.p --;
-							if (ball.p === 0) {
-								alive = false;
-							}
-						}
-						else {
-							ball.score === 0;
+				let alive = true;
+				if (ball.hits === 0) {
+					if (ball.score <= 0) {
+						ball.p --;
+						if (ball.p <= 0) {
+							ball.p = 0;
+							alive = false;
 						}
 					}
-					if (alive) {
-						balls.push(ball);
-						removes.push(index);
-					}
+					ball.score = 0;
+					zerohitted = true;
 				}
+				if (alive && ball.p > 0) {
+					balls.push(ball);
+				}
+				removes.push(index);
 			}
-		});
-		removes.reverse().forEach(b => activeBalls.splice(b, 1));
-		if (activeBalls.length === 0) {
-			if (impedes.length === 0) {
-				zerohitted = true;
-				balls.forEach(b => {
-					hits += b.p;
-					b.score += b.p;
-				});
-			}
-			if (zerohitted) {
-				count = balls.length;
-				power = 0;
-				balls.forEach(b => power += b.p);
-				updateInfo();
-			}
-			gameStatus = 2;
 		}
-		if (needRedraw) {
-			drawImpedes();
+	});
+	removes.reverse().forEach(b => activeBalls.splice(b, 1));
+	if (activeBalls.length === 0) {
+		if (impedes.length === 0) {
+			zerohitted = true;
+			balls.forEach(b => {
+				hits += b.p;
+				b.score += b.p;
+			});
 		}
-		if (needRewrite) {
-			count = balls.length + readyBalls.length + activeBalls.length;
-			power = 0;
-			balls.forEach(b => power += b.p);
-			readyBalls.forEach(b => power += b.p);
-			activeBalls.forEach(b => power += b.p);
-			updateInfo();
-		}
+		gameStatus = 2;
+	}
+	if (needRedraw) {
+		drawImpedes();
+	}
+	if (needRewrite || zerohitted) {
+		count = balls.length + readyBalls.length + activeBalls.length;
+		power = 0;
+		balls.forEach(b => power += b.p);
+		readyBalls.forEach(b => power += b.p);
+		activeBalls.forEach(b => power += b.p);
+		updateInfo();
 	}
 };
 const mainLoop = () => {
@@ -1195,7 +1215,16 @@ const mainLoop = () => {
 		else if (gameStatus === 2) {
 			if (needCombine) combineBalls();
 			nextLine();
-			if (gameStatus === 2) gameStatus = 0;
+			if (gameStatus === 2) {
+				waiting = 21;
+				gameStatus = 4;
+				moveLine(true);
+			}
+		}
+		else if (gameStatus === 4) {
+			waiting --;
+			moveLine(waiting >= 0);
+			stamp = now;
 		}
 		else {
 			stamp = 0;
@@ -1212,6 +1241,9 @@ const mainLoop = () => {
 const init = () => {
 	resize();
 
+	document.querySelector('div.container div.infoPad div.modeList div.mode[mode="back"]').addEventListener('click', evt => {
+		history.back();
+	});
 	document.querySelector('div.controller div.backer').addEventListener('click', () => {
 		gameStatus = 3;
 		if (!!timer) clearTimeout(timer);
@@ -1244,6 +1276,17 @@ const init = () => {
 		var x = evt.offsetX / canvas._width * 1000;
 		var y = evt.offsetY / canvas._height * 2000;
 		ejectBall(x, y);
+	});
+	canvas.addEventListener('touchstart', evt => {
+		if (evt.touches.length === 0) return;
+		var touch = evt.touches[evt.touches.length - 1];
+		var rect = canvas.getBoundingClientRect();
+
+		var x = (touch.clientX - rect.x) / canvas._width * 1000;
+		var y = (touch.clientY - rect.y) / canvas._height * 2000;
+		px = x;
+		py = y;
+		evt.preventDefault();
 	});
 	canvas.addEventListener('touchend', evt => {
 		ejectBall(px, py);

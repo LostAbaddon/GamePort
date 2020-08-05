@@ -1,10 +1,10 @@
 <!DOCTYPE html>
-<html lang="zh-hans" manifest="app.appcache">
+<html lang="zh-hans">
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=0">
 <link rel="manifest" href="/webapp.json">
-<title>弹球</title>
+<title>弹球冲锋</title>
 <script type="text/javascript" src="./js/connector.js"></script>
 <script type="text/javascript" src="./js/cache.js"></script>
 <style type="text/css">
@@ -67,7 +67,7 @@
 		bottom: 0px;
 		left: 0px;
 		right: 0px;
-		background-color: rgba(225, 225, 225, 0.65);
+		background-color: rgba(225, 225, 225, 0.85);
 		opacity: 0;
 		transition: opacity ease-in-out 250ms;
 		pointer-events: none;
@@ -88,6 +88,37 @@
 		color: black;
 		cursor: pointer;
 	}
+	div.container div.area div.infoPad div.title button {
+		margin: 20px;
+		font-size: 20px;
+	}
+	div.container div.area div.infoPad div.title ol {
+		padding-inline-start: 50px;
+		font-size: 20px;
+		text-align: left;
+	}
+	div.container div.area div.infoPad div.title ol p {
+		margin-top: 20px;
+		margin-bottom: 0px;
+	}
+	div.container div.area div.infoPad div.title ol li {
+		font-size: 16px;
+		font-weight: normal;
+	}
+	div.container div.area div.infoPad div.title ol span {
+		display: inline-block;
+		margin-right: 10px;
+	}
+	div.container div.area div.infoPad div.title ol span.date {
+		width: 80px;
+	}
+	div.container div.area div.infoPad div.title ol span.score {
+		width: 80px;
+	}
+	div.container div.area div.infoPad div.title ol span.level {
+		width: 60px;
+		margin-right: 0px;
+	}
 	div.container div.area div.infoPad div.mode {
 		display: block;
 		box-sizing: border-box;
@@ -101,13 +132,14 @@
 		background-color: rgba(235, 235, 235, 0.5);
 		box-shadow: 2px 2px 5px rgba(53, 53, 53, 0.4), inset 0px 0px 2px white;
 		font-size: 24px;
+		text-shadow: 0px 0px 2px black;
 		text-align: center;
 		cursor: pointer;
 		user-select: none;
 	}
-	div.container div.area div.infoPad div.title button {
-		margin: 20px;
-		font-size: 20px;
+	div.container div.area div.infoPad div.mode[mode="back"] {
+		margin-top: 60px;
+		padding: 10px 20px;
 	}
 </style>
 </head>
@@ -122,16 +154,17 @@
 	</div>
 	<div class="area">
 		<canvas></canvas>
+		<div class="infoPad" name="GameEnd">
+			<div class="title">胜败乃兵家常事，<br>大侠请重来一次！</div>
+		</div>
 		<div class="infoPad shown" name="ModeSelector">
 			<div class="modeList">
 				<div class="mode" mode="normal">普通模式</div>
 				<div class="mode" mode="hell">地狱模式</div>
 				<div class="mode" mode="normalZen">普通禅修</div>
 				<div class="mode" mode="hellZen">地狱禅修</div>
+				<div class="mode" mode="back">返回</div>
 			</div>
-		</div>
-		<div class="infoPad" name="GameEnd">
-			<div class="title">胜败乃兵家常事，<br>大侠请重来一次！</div>
 		</div>
 		<div class="infoPad" name="Updated">
 			<div class="title">

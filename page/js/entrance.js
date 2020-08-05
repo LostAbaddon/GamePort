@@ -1,8 +1,13 @@
 const Entrances = [
 	{
 		name: '弹球冲锋',
-		pic: 'logo.png',
+		pic: 'ballcrush.png',
 		target: 'ballcrush.html'
+	},
+	{
+		name: '仙草纲目',
+		pic: 'elixir.png',
+		target: 'elixir.html'
 	},
 ];
 
@@ -50,7 +55,7 @@ const Init = () => {
 };
 
 window.addEventListener('cacheUpdated', evt => {
-	console.log(evt);
+	location.reload();
 });
 
 Init();

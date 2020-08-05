@@ -2,18 +2,22 @@ const CacheName = 'gameport-v1';
 const CacheUrl = [
 	'/',
 
-	'/index.html',
-	'/ballcrush.html',
 	'/favicon.ico',
 	'/webapp.json',
+	'/index.html',
+	'/ballcrush.html',
+	'/elixir.html',
 
 	'/img/favicon-32x32.png',
 	'/img/logo.png',
+	'/img/ballcrush.png',
+	'/img/elixir.png',
 
 	'/js/cache.js',
 	'/js/connector.js',
 	'/js/entrance.js',
 	'/js/ballcrush.js',
+	'/js/elixir.js',
 ];
 const TagModify = 'last-modified';
 const channel = new BroadcastChannel('service-messages');
